@@ -3,17 +3,16 @@ import cv2
 import os
 
 
-if __name__ == '__main__':
-    read_path = "./datasets/train_data/"
-    write_path = 'imgs_path.txt'
-
+def save_path(read_path, write_path):
     with open(write_path, "w") as f:
         for root, dirs, files in os.walk(read_path, topdown=False):
             for name in files:
                 if name.endswith(".jpg"):
                     f.write(os.path.join(root, name) + "\n")
     print("Finsh writing path of JPG in imgs_path.txt")
-    
+
+
+def cal_mean_std(write_path):
     means = [0, 0, 0]
     stds = [0, 0, 0]
 
@@ -46,3 +45,11 @@ if __name__ == '__main__':
         f.write("normMean = {}".format(means) + "\n")
         f.write("normStd = {}".format(stds) + "\n")
     print("Finsh writing mean and std in mean_std.txt")
+
+
+if __name__ == '__main__':
+    read_path = "./datasets/train_data/"
+    write_path = 'imgs_path.txt'
+
+    save_path(read_path, write_path)
+    cal_mean_std(write_path)
