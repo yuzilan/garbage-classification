@@ -21,6 +21,15 @@ from keras.utils import multi_gpu_model
 
 backend.set_image_data_format('channels_last')
 
+# import tensorflow as tf
+# import keras.backend.tensorflow_backend as K
+#
+# config = tf.ConfigProto()
+# config.gpu_options.allow_growth=True
+# sess = tf.Session(config=config)
+# K.set_session(sess)
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 
 def model_fn(FLAGS, objective, optimizer, metrics):
     model = EfficientNetB5(weights=None,
@@ -38,7 +47,7 @@ def model_fn(FLAGS, objective, optimizer, metrics):
     x = Dropout(0.4)(x)
     predictions = Dense(FLAGS.num_classes, activation='softmax')(x)  # activation="linear",activation='softmax'
     model = Model(input=model.input, output=predictions)
-    model = multi_gpu_model(model, 2)  # 修改成自身需要的GPU数量，4代表用4个GPU同时加载程序
+    # model = multi_gpu_model(model, 2)  # 修改成自身需要的GPU数量，4代表用4个GPU同时加载程序
     # model.load_weights('./models/weights_004_0.9223.h5')
     model.compile(loss=objective, optimizer=optimizer, metrics=metrics)
     return model
