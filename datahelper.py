@@ -7,7 +7,7 @@ import numpy as np
 import math
 from PIL import Image
 from keras.preprocessing.image import ImageDataGenerator
-# from imgaug import augmenters as iaa
+from imgaug import augmenters as iaa
 
 
 # 标签平滑
