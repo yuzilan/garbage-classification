@@ -1,97 +1,92 @@
 # garbage-classification
 
-- `mean_std.py`：保存所有图像的路径到`imgs_path.txt`，并且运行得到图像的均值和方差保存到`mean_std.txt`
+1. `argument.py`：Linux系统下命令行选择参数。
+2. `datahelper.py`：数据预处理，把数据处理成能输入进网络进行训练的格式。
+3. `train.py`：训练并保存模型。
+4. `test.py`：对accuracy对模型进行评估。
+5. `tools`文件夹：其中每一个py文件都是能提高accuracy的tricks。
+6. `mean_std.py`：保存所有图像的路径到`imgs_path.txt`，并且运行得到图像的均值和方差保存到`mean_std.txt`
 
-BaseLine改进
-1.使用多种模型进行对比实验，ResNet50, SE-ResNet50, Xeception, SE-Xeception, efficientNetB5。
+---
 
-2.使用组归一化（GroupNormalization）代替批量归一化（batch_normalization）-解决当Batch_size过小导致的准确率下降。当batch_size小于16时，BN的error率 逐渐上升，train.py。
+## 数据集
+### 垃圾分类标签
+共40种，14802张图片（训练集:验证集 = 9:1）。
 ```
-for i, layer in enumerate(model.layers):
-    if "batch_normalization" in layer.name:
-        model.layers[i] = GroupNormalization(groups=32, axis=-1, epsilon=0.00001)
+{
+    "0": "其他垃圾/一次性快餐盒",
+    "1": "其他垃圾/污损塑料",
+    "2": "其他垃圾/烟蒂",
+    "3": "其他垃圾/牙签",
+    "4": "其他垃圾/破碎花盆及碟碗",
+    "5": "其他垃圾/竹筷",
+    "6": "厨余垃圾/剩饭剩菜",
+    "7": "厨余垃圾/大骨头",
+    "8": "厨余垃圾/水果果皮",
+    "9": "厨余垃圾/水果果肉",
+    "10": "厨余垃圾/茶叶渣",
+    "11": "厨余垃圾/菜叶菜根",
+    "12": "厨余垃圾/蛋壳",
+    "13": "厨余垃圾/鱼骨",
+    "14": "可回收物/充电宝",
+    "15": "可回收物/包",
+    "16": "可回收物/化妆品瓶",
+    "17": "可回收物/塑料玩具",
+    "18": "可回收物/塑料碗盆",
+    "19": "可回收物/塑料衣架",
+    "20": "可回收物/快递纸袋",
+    "21": "可回收物/插头电线",
+    "22": "可回收物/旧衣服",
+    "23": "可回收物/易拉罐",
+    "24": "可回收物/枕头",
+    "25": "可回收物/毛绒玩具",
+    "26": "可回收物/洗发水瓶",
+    "27": "可回收物/玻璃杯",
+    "28": "可回收物/皮鞋",
+    "29": "可回收物/砧板",
+    "30": "可回收物/纸板箱",
+    "31": "可回收物/调料瓶",
+    "32": "可回收物/酒瓶",
+    "33": "可回收物/金属食品罐",
+    "34": "可回收物/锅",
+    "35": "可回收物/食用油桶",
+    "36": "可回收物/饮料瓶",
+    "37": "有害垃圾/干电池",
+    "38": "有害垃圾/软膏",
+    "39": "有害垃圾/过期药物"
+}
 ```
-3.NAdam优化器
-```
-optimizer = Nadam(lr=FLAGS.learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, schedule_decay=0.004)
-```
-4.自定义学习率-SGDR余弦退火学习率
-```
-sample_count = len(train_sequence) * FLAGS.batch_size
-epochs = FLAGS.max_epochs
-warmup_epoch = 5
-batch_size = FLAGS.batch_size
-learning_rate_base = FLAGS.learning_rate
-total_steps = int(epochs * sample_count / batch_size)
-warmup_steps = int(warmup_epoch * sample_count / batch_size)
 
-warm_up_lr = WarmUpCosineDecayScheduler(learning_rate_base=learning_rate_base,
-                                        total_steps=total_steps,
-                                        warmup_learning_rate=0,
-                                        warmup_steps=warmup_steps,
-                                        hold_base_rate_steps=0,
-                                        )
-```
-5.数据增强：随机水平翻转、随机垂直翻转、以一定概率随机旋转90°、180°、270°、随机crop(0-10%)等(详细代码请看aug.py和data_gen.py)
-```
-def img_aug(self, img):
-    data_gen = ImageDataGenerator()
-    dic_parameter = {'flip_horizontal': random.choice([True, False]),
-                     'flip_vertical': random.choice([True, False]),
-                     'theta': random.choice([0, 0, 0, 90, 180, 270])
-                    }
+---
 
+## 数据预处理
+在`datahelper.py`中：
+- 用BaseSequence类构造基础的数据流生成器，把图片处理为可供模型训练的数据格式。
+- 用data_flow函数对label标签进行预处理。
 
-    img_aug = data_gen.apply_transform(img, transform_parameters=dic_parameter)
-    return img_aug
+---
 
+## 模型介绍
+迁移学习：将google已经训练好的EfficientNetB5模型，加上GroupNormalization、GlobalAveragePooling2D、Dropout、Dense等构成新的模型，对我们准备好的数据集进行训练。
 
-from imgaug import augmenters as iaa
-import imgaug as ia
+---
 
-def augumentor(image):
-    sometimes = lambda aug: iaa.Sometimes(0.5, aug)
-    seq = iaa.Sequential(
-        [
-            iaa.Fliplr(0.5),
-            iaa.Flipud(0.5),
-            iaa.Affine(rotate=(-10, 10)),
-            sometimes(iaa.Crop(percent=(0, 0.1), keep_size=True)),
-        ],
-        random_order=True
-    )
+## 模型评估
+评估分类的accuracy。
 
+---
 
-    image_aug = seq.augment_image(image)
+## tricks
+`tools`文件夹：
+1. 使用组归一化（GroupNormalization）代替批量归一化（batch_normalization），解决当Batch_size过小导致的准确率下降。
+2. 使用NAdam优化器。
+3. 自定义学习率：SGDR余弦退火学习率。
+4. 数据增强：随机水平翻转、随机垂直翻转、以一定概率随机旋转90°、180°、270°、随机crop(0-10%)等。
+5. 标签平滑。
+6. 数据归一化：得到所有图像的位置信息并计算所有图像的均值和方差（mead_std.py）。
 
-    return image_aug
-```
-6.标签平滑data_gen.py
-```
-def smooth_labels(y, smooth_factor=0.1):
-    assert len(y.shape) == 2
-    if 0 <= smooth_factor <= 1:
-        # label smoothing ref: https://www.robots.ox.ac.uk/~vgg/rg/papers/reinception.pdf
-        y *= 1 - smooth_factor
-        y += smooth_factor / y.shape[1]
-    else:
-        raise Exception(
-            'Invalid label smoothing factor: ' + str(smooth_factor))
-    return y
-```
-7.数据归一化：得到所有图像的位置信息Save_path.py并计算所有图像的均值和方差mead_std.py
-```
-normMean = [0.56719673 0.5293289  0.48351972]
-normStd = [0.20874391 0.21455203 0.22451781]
+---
 
-
-img = np.asarray(img, np.float32) / 255.0
-mean = [0.56719673, 0.5293289, 0.48351972]
-std = [0.20874391, 0.21455203, 0.22451781]
-img[..., 0] -= mean[0]
-img[..., 1] -= mean[1]
-img[..., 2] -= mean[2]
-img[..., 0] /= std[0]
-img[..., 1] /= std[1]
-img[..., 2] /= std[2]
-```
+## 未来的工作
+1 对比模型ResNet50, SE-ResNet50, Xeception, SE-Xeception，分析实验结果并绘图。
+2. 进行模型的测试，用给定的测试集展示分类结果，并可视化结果（在图片上进行标注）。
