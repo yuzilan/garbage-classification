@@ -1,4 +1,3 @@
-import time
 import os
 import shutil
 import multiprocessing
@@ -21,14 +20,17 @@ from keras.utils import multi_gpu_model
 
 backend.set_image_data_format('channels_last')
 
-# import tensorflow as tf
-# import keras.backend.tensorflow_backend as K
-#
-# config = tf.ConfigProto()
-# config.gpu_options.allow_growth=True
-# sess = tf.Session(config=config)
-# K.set_session(sess)
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+import tensorflow as tf
+import keras.backend.tensorflow_backend as K
+
+# sess = tf.Session()
+# init = tf.global_variables_initializer()
+# sess.run(init)
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+sess = tf.Session(config=config)
+K.set_session(sess)
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
 def model_fn(FLAGS, objective, optimizer, metrics):
@@ -68,8 +70,8 @@ class LossHistory(Callback):
 
         save_path = os.path.join(self.FLAGS.train_local, 'weights_%03d_%.4f.h5' % (epoch, logs.get('val_acc')))
         self.model.save_weights(save_path)
-        if self.FLAGS.train_url.startswith('s3://'):
-            save_url = os.path.join(self.FLAGS.train_url, 'weights_%03d_%.4f.h5' % (epoch, logs.get('val_acc')))
+        if self.FLAGS.train_outputs.startswith('s3://'):
+            save_url = os.path.join(self.FLAGS.train_outputs, 'weights_%03d_%.4f.h5' % (epoch, logs.get('val_acc')))
             shutil.copyfile(save_path, save_url)
         print('save weights file', save_path)
 
@@ -77,6 +79,22 @@ class LossHistory(Callback):
             weights_files = glob(os.path.join(self.FLAGS.train_local, '*.h5'))
             if len(weights_files) >= self.FLAGS.keep_weights_file_num:
                 weights_files.sort(key=lambda file_name: os.stat(file_name).st_ctime, reverse=True)
+
+
+def save_pb_model(train_outputs, model):
+    signature = tf.saved_model.signature_def_utils.predict_signature_def(
+        inputs={'input_img': model.input}, outputs={'output_score': model.output})
+    builder = tf.saved_model.builder.SavedModelBuilder(os.path.join(train_outputs, 'model'))
+    legacy_init_op = tf.group(tf.tables_initializer(), name='legacy_init_op')
+    builder.add_meta_graph_and_variables(
+        sess=backend.get_session(),
+        tags=[tf.saved_model.tag_constants.SERVING],
+        signature_def_map={
+            'predict_images': signature,
+        },
+        legacy_init_op=legacy_init_op)
+    builder.save()
+    print('save pb to local path success')
 
 
 def train_model(FLAGS):
@@ -125,13 +143,12 @@ def train_model(FLAGS):
 
     print('training done!')
 
-    if FLAGS.deploy_script_path != '':
-        from save_model import save_pb_model
-        save_pb_model(FLAGS, model)
+    # 保存模型
+    # save_pb_model(FLAGS.train_outputs, model)
 
     if FLAGS.test_data_url != '':
         print('test dataset predicting...')
-        from eval import load_test_data
+        from test import load_test_data
         img_names, test_data, test_labels = load_test_data(FLAGS)
         test_data = preprocess_input(test_data)
         predictions = model.predict(test_data, verbose=0)
